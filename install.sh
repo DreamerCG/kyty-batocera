@@ -215,7 +215,7 @@ for f in \
     system/ps5/emulator/KytyPS5/Kyty-template.ini \
     system/configs/emulationstation/es_systems_ps5.cfg \
     system/configs/emulationstation/es_features_ps5.cfg \
-    roms/ps5/kyti_config.ps5 \
+    "roms/ps5/Kyty Launcher.ps5" \
     temp.conf; do
     [ -f "$SRC/$f" ] || fail "fichier requis absent de l'archive : $f"
 done
@@ -264,8 +264,8 @@ for f in es_systems_ps5.cfg es_features_ps5.cfg; do
         "$DEST/system/configs/emulationstation/$f" \
         || fail "installation de la configuration EmulationStation impossible : $f"
 done
-if [ ! -e "$DEST/roms/ps5/kyti_config.ps5" ] && [ ! -L "$DEST/roms/ps5/kyti_config.ps5" ]; then
-    cp -p "$SRC/roms/ps5/kyti_config.ps5" "$DEST/roms/ps5/kyti_config.ps5" \
+if [ ! -e "$DEST/roms/ps5/Kyty Launcher.ps5" ] && [ ! -L "$DEST/roms/ps5/Kyty Launcher.ps5" ]; then
+    cp -p "$SRC/roms/ps5/Kyty Launcher.ps5" "$DEST/roms/ps5/Kyty Launcher.ps5" \
         || fail "installation de l'entrée du lanceur Kyty impossible"
 fi
 ok "Fichiers copiés ; les paramètres et jeux existants sont conservés"
@@ -353,7 +353,7 @@ for f in \
     "$DEST/system/ps5/emulator/KytyPS5-U59/.release-version" \
     "$DEST/system/configs/emulationstation/es_systems_ps5.cfg" \
     "$DEST/system/configs/emulationstation/es_features_ps5.cfg" \
-    "$DEST/roms/ps5/kyti_config.ps5"; do
+    "$DEST/roms/ps5/Kyty Launcher.ps5"; do
     [ -f "$f" ] || fail "fichier installé manquant : $f"
 done
 

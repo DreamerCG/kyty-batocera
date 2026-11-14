@@ -56,7 +56,7 @@ L'installateur effectue automatiquement les étapes suivantes :
 3. Charger les deux fichiers `system/configs/emulationstation/es_*_ps5.cfg`
    dans la configuration EmulationStation de Batocera.
 4. Placer les jeux acquis légalement dans `/userdata/roms/ps5`.
-5. Le fichier `roms/ps5/kyti_config.ps5` est une entrée de menu : la sélectionner
+5. Le fichier `roms/ps5/Kyty Launcher.ps5` est une entrée de menu : la sélectionner
    ouvre `kyty_launcher` sans argument, tandis que les fichiers de jeu sont
    lancés directement par `kyty_emulator`.
 
@@ -66,7 +66,8 @@ Les modifications existantes sont conservées. Pour le chemin de configuration
 Qt, `XDG_CONFIG_HOME` est fixé à `/userdata/system/configs/ps5`. Un fichier
 `Kyty.ini` dans le répertoire de l'émulateur prendrait priorité : le lancement
 est alors refusé pour éviter d'utiliser une autre configuration. L'entrée
-`kyti_config.ps5` active la souris via Batocera pendant l'utilisation du lanceur.
+`Kyty Launcher.ps5` active la souris via Batocera pendant l'utilisation du lanceur.
+L'ancienne entrée `kyti_config.ps5` reste reconnue si elle est déjà installée.
 Les résolutions enregistrées par le lanceur (par exemple `R1280X720`) et celles
 choisies dans EmulationStation (par exemple `1280x720`) sont prises en charge.
 

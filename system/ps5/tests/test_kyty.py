@@ -303,6 +303,8 @@ class KytyMouseTests(unittest.TestCase):
                 PS5_DIR / "configgen" / "generators" / "kytyGenerator.py",
             )
         instance = module.KytyGenerator()
+        self.assertTrue(instance.getMouseMode({}, "/roms/Kyty Launcher.ps5"))
+        self.assertTrue(instance.getMouseMode({}, "/roms/KYTY LAUNCHER.PS5"))
         self.assertTrue(instance.getMouseMode({}, "/roms/KYTI_CONFIG.PS5"))
         self.assertFalse(instance.getMouseMode({}, "/roms/game.elf"))
         u59 = module.KytyU59Generator()
@@ -391,11 +393,72 @@ class KytyMouseTests(unittest.TestCase):
                 "kyty_plugin", PS5_DIR / "launch" / "kyty_launch" / "kyty.py"
             )
         instance = module.Kyty()
+        instance.rom = "/roms/Kyty Launcher.ps5"
+        self.assertTrue(instance.needs_mouse)
+        instance.rom = "/roms/KYTY LAUNCHER.PS5"
+        self.assertTrue(instance.needs_mouse)
         instance.rom = "/roms/KYTI_CONFIG.PS5"
         self.assertTrue(instance.needs_mouse)
         instance.rom = "/roms/game.elf"
         self.assertFalse(instance.needs_mouse)
         self.assertEqual(module.KytyU59().execution_path, module.KYTY_U59_DIR)
+
+    def test_renamed_entry_launches_gui_in_both_backends(self):
+        configgen = types.ModuleType("configgen")
+        configgen.Command = types.SimpleNamespace(
+            Command=lambda array, env: types.SimpleNamespace(args=array, env=env)
+        )
+        generator = types.ModuleType("configgen.generators.Generator")
+        generator.Generator = type("Generator", (), {})
+        dataclasses = types.ModuleType("batocera_common.dataclasses")
+        dataclasses.cached_dataclass = lambda cls: cls
+        dataclasses.cached_property = property
+        command = types.ModuleType("batocera_launch.command")
+        command.Command = lambda args, env: types.SimpleNamespace(args=args, env=env)
+        emulator = types.ModuleType("batocera_launch.emulator")
+        emulator.Emulator = type("Emulator", (), {})
+        modules = {
+            "configgen": configgen,
+            "configgen.generators": types.ModuleType("configgen.generators"),
+            "configgen.generators.Generator": generator,
+            "batocera_common": types.ModuleType("batocera_common"),
+            "batocera_common.dataclasses": dataclasses,
+            "batocera_launch": types.ModuleType("batocera_launch"),
+            "batocera_launch.command": command,
+            "batocera_launch.emulator": emulator,
+        }
+        with patch.dict(sys.modules, modules):
+            generator_module = load_module(
+                "launcher_generator", PS5_DIR / "configgen" / "generators" / "kytyGenerator.py"
+            )
+            launch_module = load_module(
+                "launcher_plugin", PS5_DIR / "launch" / "kyty_launch" / "kyty.py"
+            )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            emulator_dir = Path(temp_dir)
+            launcher = emulator_dir / "kyty_launcher"
+            launcher.write_bytes(b"binary")
+            for module, cls in (
+                (generator_module, generator_module.KytyGenerator),
+                (launch_module, launch_module.Kyty),
+            ):
+                with (
+                    self.subTest(backend=module.__name__),
+                    patch.object(cls, "EMULATOR_DIR", emulator_dir),
+                    patch.object(cls, "LAUNCHER", launcher),
+                    patch.object(module, "_ensure_executable"),
+                ):
+                    instance = cls()
+                    if module is generator_module:
+                        result = instance.generate(
+                            types.SimpleNamespace(name="ps5", config={}),
+                            "/roms/Kyty Launcher.ps5", [], {}, [], [], "",
+                        )
+                    else:
+                        instance.rom = "/roms/Kyty Launcher.ps5"
+                        result = asyncio.run(instance.configure())
+                    self.assertEqual(result.args, [str(launcher)])
 
 
 if __name__ == "__main__":

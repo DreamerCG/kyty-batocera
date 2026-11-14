@@ -17,7 +17,7 @@ KYTY_U59_DIR = Path("/userdata/system/ps5/emulator/KytyPS5-U59")
 KYTY_EXTRA_LIB_DIR = Path("/userdata/system/ps5/lib")
 KYTY_EXECUTABLE = KYTY_DIR / "kyty_emulator"
 KYTY_LAUNCHER = KYTY_DIR / "kyty_launcher"
-LAUNCHER_ENTRY = "kyti_config.ps5"
+LAUNCHER_ENTRIES = {"kyty launcher.ps5", "kyti_config.ps5"}
 EXECUTE_BITS = stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
 
 KYTY_CONFIG_FILE = Path("/userdata/system/configs/ps5/Kyty/Kyty.ini")
@@ -171,7 +171,7 @@ class KytyGenerator(Generator):
         return {"name": self.EMULATOR_NAME, "keys": {"exit": ["KEY_LEFTALT", "KEY_F4"]}}
 
     def getMouseMode(self, config, rom):
-        return Path(rom).name.lower() == LAUNCHER_ENTRY
+        return Path(rom).name.lower() in LAUNCHER_ENTRIES
 
     def executionDirectory(self, config, rom):
         return str(self.EMULATOR_DIR)
@@ -180,7 +180,7 @@ class KytyGenerator(Generator):
         self, system, rom, playersControllers, metadata, guns, wheels, gameResolution
     ):
         game_path = Path(rom)
-        open_launcher = game_path.name.lower() == LAUNCHER_ENTRY
+        open_launcher = game_path.name.lower() in LAUNCHER_ENTRIES
         _log(
             f"Sélection: système={getattr(system, 'name', 'inconnu')!r}, "
             f"émulateur={self.EMULATOR_NAME}, jeu={str(game_path)!r}, "
