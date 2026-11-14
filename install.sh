@@ -12,7 +12,7 @@ REPO_URL="${ARCHIVE_URL:-https://github.com/DreamerCG/kyty-batocera/archive/refs
 DEST="/userdata"
 WORK="$DEST/system/.kyty_install_tmp"
 BACKUP="$DEST/system/kyty_backup_$(date +%Y%m%d_%H%M%S)_$$"
-TOTAL_STEPS=5
+TOTAL_STEPS=6
 DOWNLOAD_ATTEMPTS=5
 
 if [ -t 1 ]; then
@@ -94,7 +94,8 @@ for f in \
     system/ps5/emulator/KytyPS5-U59/u59-preset.json \
     system/configs/emulationstation/es_systems_ps5.cfg \
     system/configs/emulationstation/es_features_ps5.cfg \
-    roms/ps5/kyti_config.ps5; do
+    roms/ps5/kyti_config.ps5 \
+    temp.conf; do
     [ -f "$SRC/$f" ] || fail "fichier requis absent de l'archive : $f"
 done
 ok "Fichiers KytyPS5, profils U59 et configurations présents"
@@ -115,6 +116,7 @@ while IFS= read -r -d '' source_file; do
 done < <(find "$SRC/system/ps5" -type f -print0)
 backup_file system/configs/emulationstation/es_systems_ps5.cfg
 backup_file system/configs/emulationstation/es_features_ps5.cfg
+backup_file system/batocera.conf
 if [ "$NBACKUP" -gt 0 ]; then
     ok "$NBACKUP fichier(s) sauvegardé(s) temporairement"
 else
@@ -136,6 +138,62 @@ if [ ! -e "$DEST/roms/ps5/kyti_config.ps5" ] && [ ! -L "$DEST/roms/ps5/kyti_conf
         || fail "installation de l'entrée du lanceur Kyty impossible"
 fi
 ok "Fichiers copiés ; les paramètres et jeux existants sont conservés"
+
+step "Préconfiguration Batocera (batocera.conf)"
+BATOCERA_CONF="$DEST/system/batocera.conf"
+[ -f "$BATOCERA_CONF" ] || touch "$BATOCERA_CONF" \
+    || fail "création de batocera.conf impossible"
+TEMP_CONF="$SRC/temp.conf"
+sed -i 's/\r$//' "$TEMP_CONF" || fail "normalisation de temp.conf impossible"
+CONF_HEADER_DONE=0
+CONF_ADDED=0
+CONF_UPDATED=0
+conf_set() {
+    local line="$1" key="${1%%=*}" tmp_conf
+    line="${line#$'\xef\xbb\xbf'}"
+    key="${line%%=*}"
+    case "$line" in
+        *=*) ;;
+        *) fail "ligne invalide dans temp.conf : $line" ;;
+    esac
+
+    if awk -v k="$key=" 'index($0, k) == 1 { found = 1 } END { exit !found }' "$BATOCERA_CONF"; then
+        tmp_conf="$(mktemp "${BATOCERA_CONF}.XXXXXX")" \
+            || fail "création du fichier temporaire pour batocera.conf impossible"
+        cp -p "$BATOCERA_CONF" "$tmp_conf" \
+            || fail "copie de batocera.conf impossible"
+        awk -v k="$key=" -v replacement="$line" '
+            index($0, k) == 1 { print replacement; next }
+            { print }
+        ' "$BATOCERA_CONF" > "$tmp_conf" \
+            || { rm -f "$tmp_conf"; fail "mise à jour de batocera.conf impossible"; }
+        mv "$tmp_conf" "$BATOCERA_CONF" \
+            || { rm -f "$tmp_conf"; fail "remplacement de batocera.conf impossible"; }
+        return 1
+    fi
+
+    if [ -s "$BATOCERA_CONF" ] && [ -n "$(tail -c 1 "$BATOCERA_CONF")" ]; then
+        printf '\n' >> "$BATOCERA_CONF" || fail "écriture dans batocera.conf impossible"
+    fi
+    if [ "$CONF_HEADER_DONE" != 1 ]; then
+        printf '\n# KytyPS5 configuration (install KytyPS5)\n' >> "$BATOCERA_CONF" \
+            || fail "écriture de l'en-tête dans batocera.conf impossible"
+        CONF_HEADER_DONE=1
+    fi
+    printf '%s\n' "$line" >> "$BATOCERA_CONF" \
+        || fail "écriture de batocera.conf impossible"
+}
+
+while IFS= read -r line || [ -n "$line" ]; do
+    line="${line#$'\xef\xbb\xbf'}"
+    case "$line" in ''|\#*) continue ;; esac
+    if conf_set "$line"; then
+        CONF_ADDED=$((CONF_ADDED + 1))
+    else
+        CONF_UPDATED=$((CONF_UPDATED + 1))
+    fi
+done < "$TEMP_CONF"
+ok "$CONF_ADDED ligne(s) ajoutée(s), $CONF_UPDATED mise(s) à jour dans batocera.conf"
 
 step "Droits, dossiers et vérification"
 find "$DEST/system/ps5" -type f -name '*.py' -exec sed -i 's/\r$//' {} + \

@@ -1,8 +1,7 @@
 # KytyPS5 sur Batocera — première étape
 
-Ce dossier fournit une première intégration KytyPS5 pour Batocera, organisée sur
-le modèle de `system/switch2` dans `dcgswitch2`. Il ne reprend aucun fichier
-système ni aucune donnée de jeu de ce dossier.
+Ce dossier fournit une première intégration KytyPS5 pour Batocera. Il ne
+contient aucun fichier système de console ni aucune donnée de jeu.
 
 ## Contenu
 
@@ -26,7 +25,9 @@ curl -Ls https://raw.githubusercontent.com/DreamerCG/kyty-batocera/main/install.
 
 Le script installe les deux versions de Kyty, les fichiers Configgen/Batocera
 Launch et les configurations EmulationStation dans `/userdata`. Il conserve
-les jeux et les réglages Kyty déjà présents.
+les jeux et les réglages Kyty déjà présents. Il ajoute ou met à jour dans
+`/userdata/system/batocera.conf` les valeurs définies dans `temp.conf`, sans
+modifier les autres paramètres.
 
 ## Mise en place prévue sur Batocera
 
@@ -84,8 +85,8 @@ archive `.zar`. Les extensions `.elf`, `.bin` et `.zar` sont déclarées ici pou
 la première validation ; la prise en charge effective des fichiers `eboot.bin`
 et des répertoires de jeux reste à tester sur Batocera.
 
-La structure suit le lancement Configgen/Batocera Launch de `dcgswitch2`, mais
-reste à valider sur une version cible de Batocera. Cette première étape ne
+L'intégration utilise les mécanismes de lancement Configgen et Batocera Launch,
+mais reste à valider sur une version cible de Batocera. Cette première étape ne
 configure pas les options graphiques propres à Kyty, les raccourcis de sortie
 ni le démarrage sans interface. Elle ne contient pas de jeux ni de fichiers
 système de console.
