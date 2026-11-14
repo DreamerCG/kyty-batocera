@@ -1,0 +1,3 @@
+[batocera_launch.emulators]
+kyty = kyty_launch.kyty:Kyty
+kyty-u59 = kyty_launch.kyty:KytyU59

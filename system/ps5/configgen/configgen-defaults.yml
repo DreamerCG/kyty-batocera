@@ -1,0 +1,11 @@
+default:
+  emulator:
+  core:
+  options:
+    forceNoBezel: true
+
+ps5:
+  emulator: kyty
+  core: default
+  options:
+    forceNoBezel: true
