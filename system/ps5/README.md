@@ -23,23 +23,34 @@ Depuis un terminal SSH sur Batocera, lancer :
 curl -Ls https://raw.githubusercontent.com/DreamerCG/kyty-batocera/main/install.sh | bash
 ```
 
-Le script installe les deux versions de Kyty, les fichiers Configgen/Batocera
-Launch et les configurations EmulationStation dans `/userdata`. Il conserve
-les jeux et les réglages Kyty déjà présents. Il ajoute ou met à jour dans
-`/userdata/system/batocera.conf` les valeurs définies dans `temp.conf`, sans
-modifier les autres paramètres.
+Le script installe les fichiers Configgen/Batocera Launch et les configurations
+EmulationStation dans `/userdata`, puis récupère les deux émulateurs depuis
+leurs releases Linux :
+
+- [KytyPS5/KytyPS5](https://github.com/KytyPS5/KytyPS5/releases) pour `KytyPS5`.
+- [Jetsku/KytyPS5](https://github.com/Jetsku/KytyPS5/releases) pour `KytyPS5-U59`.
+
+Les archives `Linux-x86_64.tar.gz` sont téléchargées et extraites dans leurs
+dossiers respectifs sous `/userdata/system/ps5/emulator/`. Le tag de release et
+son checksum sont conservés dans `.release-version` dans chaque dossier ; si
+la release n'a pas changé et que les exécutables sont présents, l'archive
+n'est pas retéléchargée. Le script conserve les jeux et les réglages Kyty déjà
+présents. Il ajoute ou met à jour dans `/userdata/system/batocera.conf` les
+valeurs définies dans `temp.conf`, sans modifier les autres paramètres.
+Les paquets binaires des émulateurs ne sont donc pas stockés dans ce dépôt.
+Le checksum SHA-256 est vérifié avant extraction lorsque GitHub le fournit.
 
 ## Mise en place prévue sur Batocera
 
 L'installateur effectue automatiquement les étapes suivantes :
 
-1. Déployer le contenu de `system/ps5` sous `/userdata/system/ps5`.
-2. Conserver/déployer les paquets Linux dans
-   `/userdata/system/ps5/emulator/KytyPS5/` et/ou
-   `/userdata/system/ps5/emulator/KytyPS5-U59/`, avec leurs exécutables,
-   bibliothèques, plugins et ressources Qt. Le binaire doit être exécutable.
-   Dans EmulationStation, sélectionner `kyty` ou `kyty-u59` pour choisir la
-   version à utiliser. Le loader U59 applique également son `u59-preset.json`.
+1. Déployer l'intégration depuis `system/ps5` sous `/userdata/system/ps5`, puis
+   installer les archives Linux des deux releases dans les dossiers
+   `/userdata/system/ps5/emulator/KytyPS5/` et
+   `/userdata/system/ps5/emulator/KytyPS5-U59/`.
+2. Dans EmulationStation, sélectionner `kyty` ou `kyty-u59` pour choisir la
+   version à utiliser. La release U59 fournit le `u59-preset.json` appliqué par
+   son loader.
 3. Charger les deux fichiers `system/configs/emulationstation/es_*_ps5.cfg`
    dans la configuration EmulationStation de Batocera.
 4. Placer les jeux acquis légalement dans `/userdata/roms/ps5`.

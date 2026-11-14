@@ -12,7 +12,7 @@ REPO_URL="${ARCHIVE_URL:-https://github.com/DreamerCG/kyty-batocera/archive/refs
 DEST="/userdata"
 WORK="$DEST/system/.kyty_install_tmp"
 BACKUP="$DEST/system/kyty_backup_$(date +%Y%m%d_%H%M%S)_$$"
-TOTAL_STEPS=6
+TOTAL_STEPS=7
 DOWNLOAD_ATTEMPTS=5
 
 if [ -t 1 ]; then
@@ -56,6 +56,130 @@ download_archive() {
     return 1
 }
 
+download_url() {
+    local url="$1" dest="$2" label="$3" attempt=1
+    command -v curl >/dev/null 2>&1 || command -v wget >/dev/null 2>&1 \
+        || fail "ni curl ni wget n'est disponible pour télécharger $label"
+
+    while [ "$attempt" -le "$DOWNLOAD_ATTEMPTS" ]; do
+        rm -f "$dest"
+        if command -v curl >/dev/null 2>&1; then
+            curl -fsL --retry 2 --retry-delay 2 --connect-timeout 20 \
+                -H 'Accept: application/vnd.github+json' \
+                -o "$dest" "$url" || rm -f "$dest"
+        else
+            wget -q -T 30 -O "$dest" "$url" || rm -f "$dest"
+        fi
+
+        if [ -s "$dest" ]; then
+            return 0
+        fi
+        rm -f "$dest"
+        if [ "$attempt" -lt "$DOWNLOAD_ATTEMPTS" ]; then
+            warn "Échec du téléchargement de $label (tentative $attempt/$DOWNLOAD_ATTEMPTS), nouvel essai..."
+            sleep $((attempt * 2))
+        fi
+        attempt=$((attempt + 1))
+    done
+    return 1
+}
+
+install_emulator_release() {
+    local name="$1" api_url="$2" target="$3" json_file metadata
+    local release_tag asset_url digest release_digest asset_file stage version_file actual_digest
+    json_file="$WORK/$name-release.json"
+    download_url "$api_url" "$json_file" "les informations de release $name" \
+        || fail "impossible de récupérer la dernière release de $name"
+
+    metadata="$(python3 - "$json_file" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as release_file:
+    release = json.load(release_file)
+
+assets = [
+    asset
+    for asset in release.get("assets", [])
+    if asset.get("name", "").endswith("Linux-x86_64.tar.gz")
+]
+if len(assets) != 1:
+    raise SystemExit("la release doit contenir exactement une archive Linux-x86_64.tar.gz")
+
+tag = release.get("tag_name")
+url = assets[0].get("browser_download_url")
+digest = assets[0].get("digest") or ""
+if not tag or not url:
+    raise SystemExit("la release ne contient pas de tag ou d'URL de téléchargement")
+print(f"{tag}\t{url}\t{digest}")
+PY
+    )" || fail "métadonnées de release invalides pour $name"
+    IFS=$'\t' read -r release_tag asset_url digest <<< "$metadata"
+    [ -n "$release_tag" ] && [ -n "$asset_url" ] \
+        || fail "tag ou URL absent dans les métadonnées de release $name"
+    release_digest="$digest"
+
+    version_file="$target/.release-version"
+    if [ -f "$version_file" ] \
+        && [ "$(sed -n '1p' "$version_file")" = "$release_tag" ] \
+        && [ "$(sed -n '2p' "$version_file")" = "$release_digest" ] \
+        && [ -x "$target/kyty_emulator" ] \
+        && [ -x "$target/kyty_launcher" ]; then
+        ok "$name déjà à jour ($release_tag), téléchargement ignoré"
+        return 0
+    fi
+
+    asset_file="$WORK/$name-Linux-x86_64.tar.gz"
+    download_url "$asset_url" "$asset_file" "l'archive Linux de $name" \
+        || fail "téléchargement de l'archive Linux de $name impossible"
+    gzip -t "$asset_file" || fail "archive Linux invalide ou incomplète pour $name"
+
+    if [ -n "$digest" ]; then
+        case "$digest" in
+            sha256:*) digest="${digest#sha256:}" ;;
+            *) fail "type de checksum non pris en charge pour $name : $digest" ;;
+        esac
+        actual_digest="$(python3 - "$asset_file" <<'PY'
+import hashlib
+import sys
+
+digest = hashlib.sha256()
+with open(sys.argv[1], "rb") as archive:
+    for chunk in iter(lambda: archive.read(1024 * 1024), b""):
+        digest.update(chunk)
+print(digest.hexdigest())
+PY
+        )" || fail "vérification SHA-256 impossible pour $name"
+        [ "$actual_digest" = "$digest" ] \
+            || fail "checksum SHA-256 incorrect pour l'archive de $name"
+    fi
+
+    stage="$WORK/$name"
+    mkdir -p "$stage"
+    tar -xzf "$asset_file" -C "$stage" \
+        || fail "extraction de l'archive Linux impossible pour $name"
+    for executable in kyty_emulator kyty_launcher; do
+        [ -f "$stage/$executable" ] \
+            || fail "binaire $executable absent de l'archive Linux de $name"
+    done
+    if [ "$name" = "KytyPS5-U59" ] && [ ! -f "$stage/u59-preset.json" ]; then
+        fail "u59-preset.json absent de l'archive Linux de $name"
+    fi
+
+    mkdir -p "$target" || fail "création du dossier d'installation impossible : $target"
+    cp -a "$stage/." "$target/" || fail "copie des fichiers de $name impossible"
+    chmod a+x "$target/kyty_emulator" "$target/kyty_launcher" \
+        || fail "droits d'exécution impossibles à appliquer à $name"
+    [ -x "$target/kyty_emulator" ] && [ -x "$target/kyty_launcher" ] \
+        || fail "les exécutables de $name ne sont pas exécutables après installation"
+
+    printf '%s\n%s\n' "$release_tag" "$release_digest" > "$WORK/$name.release-version" \
+        || fail "écriture du marqueur de version impossible pour $name"
+    mv "$WORK/$name.release-version" "$version_file" \
+        || fail "installation du marqueur de version impossible pour $name"
+    ok "$name installé (release $release_tag)"
+}
+
 cleanup() {
     code=$?
     if ! rm -rf "$WORK"; then
@@ -86,19 +210,24 @@ SRC="$(find "$WORK" -mindepth 1 -maxdepth 1 -type d -print -quit)"
 
 for f in \
     system/ps5/launch/run.py \
-    system/ps5/emulator/KytyPS5/kyty_emulator \
-    system/ps5/emulator/KytyPS5/kyty_launcher \
     system/ps5/emulator/KytyPS5/Kyty-template.ini \
-    system/ps5/emulator/KytyPS5-U59/kyty_emulator \
-    system/ps5/emulator/KytyPS5-U59/kyty_launcher \
-    system/ps5/emulator/KytyPS5-U59/u59-preset.json \
     system/configs/emulationstation/es_systems_ps5.cfg \
     system/configs/emulationstation/es_features_ps5.cfg \
     roms/ps5/kyti_config.ps5 \
     temp.conf; do
     [ -f "$SRC/$f" ] || fail "fichier requis absent de l'archive : $f"
 done
-ok "Fichiers KytyPS5, profils U59 et configurations présents"
+ok "Fichiers d'intégration KytyPS5 et configurations présents"
+
+step "Récupération des releases Linux Kyty"
+install_emulator_release \
+    KytyPS5 \
+    https://api.github.com/repos/KytyPS5/KytyPS5/releases/latest \
+    "$DEST/system/ps5/emulator/KytyPS5"
+install_emulator_release \
+    KytyPS5-U59 \
+    https://api.github.com/repos/Jetsku/KytyPS5/releases/latest \
+    "$DEST/system/ps5/emulator/KytyPS5-U59"
 
 step "Sauvegarde des fichiers à remplacer"
 NBACKUP=0
@@ -214,7 +343,12 @@ done
 for f in \
     "$DEST/system/ps5/launch/run.py" \
     "$DEST/system/ps5/emulator/KytyPS5/kyty_emulator" \
+    "$DEST/system/ps5/emulator/KytyPS5/kyty_launcher" \
+    "$DEST/system/ps5/emulator/KytyPS5/.release-version" \
     "$DEST/system/ps5/emulator/KytyPS5-U59/kyty_emulator" \
+    "$DEST/system/ps5/emulator/KytyPS5-U59/kyty_launcher" \
+    "$DEST/system/ps5/emulator/KytyPS5-U59/u59-preset.json" \
+    "$DEST/system/ps5/emulator/KytyPS5-U59/.release-version" \
     "$DEST/system/configs/emulationstation/es_systems_ps5.cfg" \
     "$DEST/system/configs/emulationstation/es_features_ps5.cfg" \
     "$DEST/roms/ps5/kyti_config.ps5"; do
