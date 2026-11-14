@@ -34,7 +34,9 @@ Les archives `Linux-x86_64.tar.gz` sont téléchargées et extraites dans leurs
 dossiers respectifs sous `/userdata/system/ps5/emulator/`. Le tag de release et
 son checksum sont conservés dans `.release-version` dans chaque dossier ; si
 la release n'a pas changé et que les exécutables sont présents, l'archive
-n'est pas retéléchargée. Le script conserve les jeux et les réglages Kyty déjà
+n'est pas retéléchargée. Le fichier temporaire utilisé pour mettre à jour ce
+marqueur est également créé dans le dossier de l'émulateur. Le script conserve
+les jeux et les réglages Kyty déjà
 présents. Il ajoute ou met à jour dans `/userdata/system/batocera.conf` les
 valeurs définies dans `temp.conf`, sans modifier les autres paramètres.
 Les paquets binaires des émulateurs ne sont donc pas stockés dans ce dépôt.

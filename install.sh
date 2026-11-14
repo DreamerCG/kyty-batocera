@@ -86,7 +86,7 @@ download_url() {
 
 install_emulator_release() {
     local name="$1" api_url="$2" target="$3" json_file metadata
-    local release_tag asset_url digest release_digest asset_file stage version_file actual_digest
+    local release_tag asset_url digest release_digest asset_file stage version_file version_tmp actual_digest
     json_file="$WORK/$name-release.json"
     download_url "$api_url" "$json_file" "les informations de release $name" \
         || fail "impossible de récupérer la dernière release de $name"
@@ -173,10 +173,12 @@ PY
     [ -x "$target/kyty_emulator" ] && [ -x "$target/kyty_launcher" ] \
         || fail "les exécutables de $name ne sont pas exécutables après installation"
 
-    printf '%s\n%s\n' "$release_tag" "$release_digest" > "$WORK/$name.release-version" \
-        || fail "écriture du marqueur de version impossible pour $name"
-    mv "$WORK/$name.release-version" "$version_file" \
-        || fail "installation du marqueur de version impossible pour $name"
+    version_tmp="$(mktemp "$target/.release-version.XXXXXX")" \
+        || fail "création du marqueur temporaire impossible pour $name"
+    printf '%s\n%s\n' "$release_tag" "$release_digest" > "$version_tmp" \
+        || { rm -f "$version_tmp"; fail "écriture du marqueur de version impossible pour $name"; }
+    mv -f "$version_tmp" "$version_file" \
+        || { rm -f "$version_tmp"; fail "installation du marqueur de version impossible pour $name"; }
     ok "$name installé (release $release_tag)"
 }
 
