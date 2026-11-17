@@ -10,10 +10,17 @@ set -e
 
 REPO_URL="${ARCHIVE_URL:-https://github.com/DreamerCG/kyty-batocera/archive/refs/heads/main.tar.gz}"
 DEST="/userdata"
-WORK="$DEST/system/.kyty_install_tmp"
+WORK=""
 BACKUP="$DEST/system/kyty_backup_$(date +%Y%m%d_%H%M%S)_$$"
 TOTAL_STEPS=7
 DOWNLOAD_ATTEMPTS=5
+
+MODE="${1:-install}"
+case "$MODE" in
+    install|--update) ;;
+    *) echo "Usage : $0 [--update]" >&2; exit 1 ;;
+esac
+[ "$#" -le 1 ] || { echo "Trop d'arguments" >&2; exit 1; }
 
 if [ -t 1 ]; then
     B=$'\033[1m'; G=$'\033[32m'; R=$'\033[31m'; Y=$'\033[33m'; C=$'\033[36m'; N=$'\033[0m'
@@ -56,135 +63,9 @@ download_archive() {
     return 1
 }
 
-download_url() {
-    local url="$1" dest="$2" label="$3" attempt=1
-    command -v curl >/dev/null 2>&1 || command -v wget >/dev/null 2>&1 \
-        || fail "ni curl ni wget n'est disponible pour télécharger $label"
-
-    while [ "$attempt" -le "$DOWNLOAD_ATTEMPTS" ]; do
-        rm -f "$dest"
-        if command -v curl >/dev/null 2>&1; then
-            curl -fsL --retry 2 --retry-delay 2 --connect-timeout 20 \
-                -H 'Accept: application/vnd.github+json' \
-                -o "$dest" "$url" || rm -f "$dest"
-        else
-            wget -q -T 30 -O "$dest" "$url" || rm -f "$dest"
-        fi
-
-        if [ -s "$dest" ]; then
-            return 0
-        fi
-        rm -f "$dest"
-        if [ "$attempt" -lt "$DOWNLOAD_ATTEMPTS" ]; then
-            warn "Échec du téléchargement de $label (tentative $attempt/$DOWNLOAD_ATTEMPTS), nouvel essai..."
-            sleep $((attempt * 2))
-        fi
-        attempt=$((attempt + 1))
-    done
-    return 1
-}
-
-install_emulator_release() {
-    local name="$1" api_url="$2" target="$3" json_file metadata
-    local release_tag asset_url digest release_digest asset_file stage version_file version_tmp actual_digest
-    json_file="$WORK/$name-release.json"
-    download_url "$api_url" "$json_file" "les informations de release $name" \
-        || fail "impossible de récupérer la dernière release de $name"
-
-    metadata="$(python3 - "$json_file" <<'PY'
-import json
-import sys
-
-with open(sys.argv[1], encoding="utf-8") as release_file:
-    release = json.load(release_file)
-
-assets = [
-    asset
-    for asset in release.get("assets", [])
-    if asset.get("name", "").endswith("Linux-x86_64.tar.gz")
-]
-if len(assets) != 1:
-    raise SystemExit("la release doit contenir exactement une archive Linux-x86_64.tar.gz")
-
-tag = release.get("tag_name")
-url = assets[0].get("browser_download_url")
-digest = assets[0].get("digest") or ""
-if not tag or not url:
-    raise SystemExit("la release ne contient pas de tag ou d'URL de téléchargement")
-print(f"{tag}\t{url}\t{digest}")
-PY
-    )" || fail "métadonnées de release invalides pour $name"
-    IFS=$'\t' read -r release_tag asset_url digest <<< "$metadata"
-    [ -n "$release_tag" ] && [ -n "$asset_url" ] \
-        || fail "tag ou URL absent dans les métadonnées de release $name"
-    release_digest="$digest"
-
-    version_file="$target/.release-version"
-    if [ -f "$version_file" ] \
-        && [ "$(sed -n '1p' "$version_file")" = "$release_tag" ] \
-        && [ "$(sed -n '2p' "$version_file")" = "$release_digest" ] \
-        && [ -x "$target/kyty_emulator" ] \
-        && [ -x "$target/kyty_launcher" ]; then
-        ok "$name déjà à jour ($release_tag), téléchargement ignoré"
-        return 0
-    fi
-
-    asset_file="$WORK/$name-Linux-x86_64.tar.gz"
-    download_url "$asset_url" "$asset_file" "l'archive Linux de $name" \
-        || fail "téléchargement de l'archive Linux de $name impossible"
-    gzip -t "$asset_file" || fail "archive Linux invalide ou incomplète pour $name"
-
-    if [ -n "$digest" ]; then
-        case "$digest" in
-            sha256:*) digest="${digest#sha256:}" ;;
-            *) fail "type de checksum non pris en charge pour $name : $digest" ;;
-        esac
-        actual_digest="$(python3 - "$asset_file" <<'PY'
-import hashlib
-import sys
-
-digest = hashlib.sha256()
-with open(sys.argv[1], "rb") as archive:
-    for chunk in iter(lambda: archive.read(1024 * 1024), b""):
-        digest.update(chunk)
-print(digest.hexdigest())
-PY
-        )" || fail "vérification SHA-256 impossible pour $name"
-        [ "$actual_digest" = "$digest" ] \
-            || fail "checksum SHA-256 incorrect pour l'archive de $name"
-    fi
-
-    stage="$WORK/$name"
-    mkdir -p "$stage"
-    tar -xzf "$asset_file" -C "$stage" \
-        || fail "extraction de l'archive Linux impossible pour $name"
-    for executable in kyty_emulator kyty_launcher; do
-        [ -f "$stage/$executable" ] \
-            || fail "binaire $executable absent de l'archive Linux de $name"
-    done
-    if [ "$name" = "KytyPS5-U59" ] && [ ! -f "$stage/u59-preset.json" ]; then
-        fail "u59-preset.json absent de l'archive Linux de $name"
-    fi
-
-    mkdir -p "$target" || fail "création du dossier d'installation impossible : $target"
-    cp -a "$stage/." "$target/" || fail "copie des fichiers de $name impossible"
-    chmod a+x "$target/kyty_emulator" "$target/kyty_launcher" \
-        || fail "droits d'exécution impossibles à appliquer à $name"
-    [ -x "$target/kyty_emulator" ] && [ -x "$target/kyty_launcher" ] \
-        || fail "les exécutables de $name ne sont pas exécutables après installation"
-
-    version_tmp="$(mktemp "$target/.release-version.XXXXXX")" \
-        || fail "création du marqueur temporaire impossible pour $name"
-    printf '%s\n%s\n' "$release_tag" "$release_digest" > "$version_tmp" \
-        || { rm -f "$version_tmp"; fail "écriture du marqueur de version impossible pour $name"; }
-    mv -f "$version_tmp" "$version_file" \
-        || { rm -f "$version_tmp"; fail "installation du marqueur de version impossible pour $name"; }
-    ok "$name installé (release $release_tag)"
-}
-
 cleanup() {
     code=$?
-    if ! rm -rf "$WORK"; then
+    if [ -n "$WORK" ] && ! rm -rf -- "$WORK"; then
         warn "Impossible de supprimer le dossier temporaire : $WORK"
     fi
     if [ "$code" -ne 0 ] && [ -d "$BACKUP" ]; then
@@ -198,10 +79,14 @@ printf '       Installation de KytyPS5\n'
 printf '=========================================%s\n' "$N"
 
 [ -d "$DEST" ] || fail "$DEST n'existe pas (ce script doit tourner sur Batocera)"
+command -v flock >/dev/null 2>&1 || fail "flock est nécessaire pour éviter les installations simultanées"
+exec 8>/tmp/kyty-install.lock || fail "création du verrou impossible"
+flock -n 8 || fail "une installation Kyty est déjà en cours"
+mkdir -p "$DEST/system" || fail "création du dossier système impossible"
+WORK="$(mktemp -d "$DEST/system/.kyty_install_tmp.XXXXXX")" \
+    || fail "création du dossier temporaire impossible"
 
 step "Téléchargement de l'archive"
-rm -rf "$WORK"
-mkdir -p "$WORK" || fail "création du dossier temporaire impossible : $WORK"
 download_archive || fail "téléchargement impossible après $DOWNLOAD_ATTEMPTS tentatives (vérifiez ARCHIVE_URL et la connexion)"
 ok "Archive téléchargée ($(du -h "$WORK/archive.tar.gz" | cut -f1))"
 
@@ -215,21 +100,19 @@ for f in \
     system/ps5/emulator/KytyPS5/Kyty-template.ini \
     system/configs/emulationstation/es_systems_ps5.cfg \
     system/configs/emulationstation/es_features_ps5.cfg \
+    system/services/dcg_kyty_update \
     "roms/ps5/Kyty Launcher.ps5" \
-    temp.conf; do
+    temp.conf VERSION.txt; do
     [ -f "$SRC/$f" ] || fail "fichier requis absent de l'archive : $f"
 done
+INTEGRATION_VERSION="$(tr -d '\r\n[:space:]' < "$SRC/VERSION.txt")"
+[[ "$INTEGRATION_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+    || fail "VERSION.txt invalide dans l'archive"
 ok "Fichiers d'intégration KytyPS5 et configurations présents"
 
 step "Récupération des releases Linux Kyty"
-install_emulator_release \
-    KytyPS5 \
-    https://api.github.com/repos/KytyPS5/KytyPS5/releases/latest \
-    "$DEST/system/ps5/emulator/KytyPS5"
-install_emulator_release \
-    KytyPS5-U59 \
-    https://api.github.com/repos/Jetsku/KytyPS5/releases/latest \
-    "$DEST/system/ps5/emulator/KytyPS5-U59"
+bash "$SRC/system/services/dcg_kyty_update" --emulators-only-locked \
+    || fail "échec de l'installation d'au moins un émulateur"
 
 step "Sauvegarde des fichiers à remplacer"
 NBACKUP=0
@@ -248,6 +131,7 @@ done < <(find "$SRC/system/ps5" -type f -print0)
 backup_file system/configs/emulationstation/es_systems_ps5.cfg
 backup_file system/configs/emulationstation/es_features_ps5.cfg
 backup_file system/batocera.conf
+backup_file system/services/dcg_kyty_update
 if [ "$NBACKUP" -gt 0 ]; then
     ok "$NBACKUP fichier(s) sauvegardé(s) temporairement"
 else
@@ -268,6 +152,12 @@ if [ ! -e "$DEST/roms/ps5/Kyty Launcher.ps5" ] && [ ! -L "$DEST/roms/ps5/Kyty La
     cp -p "$SRC/roms/ps5/Kyty Launcher.ps5" "$DEST/roms/ps5/Kyty Launcher.ps5" \
         || fail "installation de l'entrée du lanceur Kyty impossible"
 fi
+mkdir -p "$DEST/system/services" || fail "création du dossier des services impossible"
+target_path="$DEST/system/services/dcg_kyty_update"
+temp_path="$(mktemp "${target_path}.XXXXXX")" || fail "création du fichier temporaire impossible"
+sed 's/\r$//' "$SRC/system/services/dcg_kyty_update" > "$temp_path" && \
+    chmod a+x "$temp_path" && mv -f "$temp_path" "$target_path" \
+    || { rm -f "$temp_path"; fail "installation impossible : $target_path"; }
 ok "Fichiers copiés ; les paramètres et jeux existants sont conservés"
 
 step "Préconfiguration Batocera (batocera.conf)"
@@ -279,6 +169,7 @@ sed -i 's/\r$//' "$TEMP_CONF" || fail "normalisation de temp.conf impossible"
 CONF_HEADER_DONE=0
 CONF_ADDED=0
 CONF_UPDATED=0
+CONF_PRESERVED=0
 conf_set() {
     local line="$1" key="${1%%=*}" tmp_conf
     line="${line#$'\xef\xbb\xbf'}"
@@ -289,6 +180,9 @@ conf_set() {
     esac
 
     if awk -v k="$key=" 'index($0, k) == 1 { found = 1 } END { exit !found }' "$BATOCERA_CONF"; then
+        if [ "$MODE" = "--update" ]; then
+            return 2
+        fi
         tmp_conf="$(mktemp "${BATOCERA_CONF}.XXXXXX")" \
             || fail "création du fichier temporaire pour batocera.conf impossible"
         cp -p "$BATOCERA_CONF" "$tmp_conf" \
@@ -321,10 +215,13 @@ while IFS= read -r line || [ -n "$line" ]; do
     if conf_set "$line"; then
         CONF_ADDED=$((CONF_ADDED + 1))
     else
-        CONF_UPDATED=$((CONF_UPDATED + 1))
+        case "$?" in
+            1) CONF_UPDATED=$((CONF_UPDATED + 1)) ;;
+            2) CONF_PRESERVED=$((CONF_PRESERVED + 1)) ;;
+        esac
     fi
 done < "$TEMP_CONF"
-ok "$CONF_ADDED ligne(s) ajoutée(s), $CONF_UPDATED mise(s) à jour dans batocera.conf"
+ok "$CONF_ADDED ligne(s) ajoutée(s), $CONF_UPDATED mise(s) à jour, $CONF_PRESERVED conservée(s) dans batocera.conf"
 
 step "Droits, dossiers et vérification"
 find "$DEST/system/ps5" -type f -name '*.py' -exec sed -i 's/\r$//' {} + \
@@ -353,9 +250,26 @@ for f in \
     "$DEST/system/ps5/emulator/KytyPS5-U59/.release-version" \
     "$DEST/system/configs/emulationstation/es_systems_ps5.cfg" \
     "$DEST/system/configs/emulationstation/es_features_ps5.cfg" \
+    "$DEST/system/services/dcg_kyty_update" \
     "$DEST/roms/ps5/Kyty Launcher.ps5"; do
     [ -f "$f" ] || fail "fichier installé manquant : $f"
 done
+
+if [ "$MODE" = "install" ]; then
+    command -v batocera-services >/dev/null 2>&1 \
+        || fail "batocera-services est nécessaire pour activer la mise à jour au démarrage"
+    batocera-services enable dcg_kyty_update || fail "activation du service Kyty impossible"
+    enabled_services="$(batocera-services list user)" \
+        || fail "vérification des services Batocera impossible"
+    printf '%s\n' "$enabled_services" | grep -Fxq 'dcg_kyty_update;*' \
+        || fail "le service Kyty n'est pas activé dans Batocera"
+fi
+
+version_tmp="$(mktemp "$DEST/system/ps5/.VERSION.txt.XXXXXX")" \
+    || fail "création du marqueur de version impossible"
+printf '%s\n' "$INTEGRATION_VERSION" > "$version_tmp" && \
+    mv -f "$version_tmp" "$DEST/system/ps5/VERSION.txt" \
+    || { rm -f "$version_tmp"; fail "installation du marqueur de version impossible"; }
 
 if [ -d "$BACKUP" ]; then
     rm -rf "$BACKUP" || fail "impossible de supprimer la sauvegarde temporaire : $BACKUP"

@@ -42,6 +42,33 @@ valeurs définies dans `temp.conf`, sans modifier les autres paramètres.
 Les paquets binaires des émulateurs ne sont donc pas stockés dans ce dépôt.
 Le checksum SHA-256 est vérifié avant extraction lorsque GitHub le fournit.
 
+## Mises à jour automatiques
+
+L'installateur utilise le service Batocera `dcg_kyty_update` pour installer les
+deux émulateurs, puis l'active. À chaque démarrage,
+il vérifie en arrière-plan la version de l'intégration dans `VERSION.txt` sur
+ce dépôt et les dernières releases Linux des deux émulateurs. Les tags et les
+checksums des releases sont comparés aux marqueurs `.release-version` ; une
+archive inchangée n'est pas retéléchargée. La version installée de l'intégration
+est conservée dans `/userdata/system/ps5/VERSION.txt`. Les mises à jour
+automatiques conservent les valeurs existantes dans `batocera.conf`, les jeux
+et la configuration Kyty.
+
+Le journal se trouve dans `/userdata/system/logs/kyty_update.log`. Pour lancer
+une vérification manuelle et afficher ses résultats :
+
+```sh
+bash /userdata/system/services/dcg_kyty_update scan
+```
+
+Le service peut être désactivé ou réactivé dans les services d'EmulationStation
+ou avec `batocera-services disable dcg_kyty_update` et
+`batocera-services enable dcg_kyty_update`. Une mise à jour automatique ne
+réactive pas un service désactivé. En cas d'échec réseau, les erreurs sont
+consignées et une nouvelle vérification aura lieu au prochain démarrage.
+L'installation et les mises à jour nécessitent `python3`, `flock`, ainsi que
+`curl` ou `wget`.
+
 ## Mise en place prévue sur Batocera
 
 L'installateur effectue automatiquement les étapes suivantes :
