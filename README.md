@@ -20,7 +20,8 @@ contient aucun fichier système de console ni aucune donnée de jeu.
 Depuis un terminal SSH sur Batocera, lancer :
 
 ```sh
-curl -Ls https://raw.githubusercontent.com/DreamerCG/kyty-batocera/main/install.sh | bash
+(set -o pipefail; curl -fsSL -H 'Accept: application/vnd.github.raw+json' \
+  'https://api.github.com/repos/DreamerCG/kyty-batocera/contents/install.sh?ref=main' | bash)
 ```
 
 Le script installe les fichiers Configgen/Batocera Launch et les configurations
@@ -41,6 +42,9 @@ présents. Il ajoute ou met à jour dans `/userdata/system/batocera.conf` les
 valeurs définies dans `temp.conf`, sans modifier les autres paramètres.
 Les paquets binaires des émulateurs ne sont donc pas stockés dans ce dépôt.
 Le checksum SHA-256 est vérifié avant extraction lorsque GitHub le fournit.
+La commande utilise l'API GitHub pour éviter une version périmée de
+`install.sh` dans le cache de `raw.githubusercontent.com`. L'API peut limiter
+temporairement le nombre de requêtes ; dans ce cas, réessayer ultérieurement.
 
 ## Mises à jour automatiques
 

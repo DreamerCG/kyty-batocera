@@ -1,7 +1,8 @@
 #!/bin/bash
 # Installation de KytyPS5 dans Batocera.
 # Usage (SSH sur Batocera) :
-#   curl -Ls https://raw.githubusercontent.com/DreamerCG/kyty-batocera/main/install.sh | bash
+#   (set -o pipefail; curl -fsSL -H 'Accept: application/vnd.github.raw+json' \
+#     'https://api.github.com/repos/DreamerCG/kyty-batocera/contents/install.sh?ref=main' | bash)
 # Pour un dépôt ou une branche différente, définir ARCHIVE_URL avant l'exécution.
 # Le contenu Kyty est fusionné dans /userdata ; les autres fichiers utilisateur
 # et les jeux ne sont ni supprimés ni remplacés.

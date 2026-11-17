@@ -1,7 +1,7 @@
 #!/bin/bash
 # Vérifie l'intégration et les releases Kyty au démarrage de Batocera.
 
-REPO_RAW="https://raw.githubusercontent.com/DreamerCG/kyty-batocera/main"
+REPO_API="https://api.github.com/repos/DreamerCG/kyty-batocera/contents"
 VERSION_FILE="/userdata/system/ps5/VERSION.txt"
 LOG="/userdata/system/logs/kyty_update.log"
 DEST="/userdata"
@@ -14,9 +14,10 @@ fail() { log "ERREUR : $*"; exit 1; }
 
 download() {
     if command -v curl >/dev/null 2>&1; then
-        curl -fsSL --connect-timeout 10 --max-time 60 "$1" -o "$2"
+        curl -fsSL -H 'Accept: application/vnd.github.raw+json' \
+            --connect-timeout 10 --max-time 60 "$1" -o "$2"
     elif command -v wget >/dev/null 2>&1; then
-        wget -q -T 60 -O "$2" "$1"
+        wget -q --header='Accept: application/vnd.github.raw+json' -T 60 -O "$2" "$1"
     else
         log "ERREUR : curl ou wget est nécessaire"
         return 1
@@ -188,7 +189,7 @@ check_update() (
 
     remote=""
     for ((attempt=1; attempt<=30; attempt++)); do
-        if download "$REPO_RAW/VERSION.txt" "$work/VERSION.txt"; then
+        if download "$REPO_API/VERSION.txt?ref=main" "$work/VERSION.txt"; then
             remote="$(tr -d '\r\n[:space:]' < "$work/VERSION.txt")"
             [ -n "$remote" ] && break
         fi
@@ -209,7 +210,7 @@ check_update() (
             log "Intégration : version locale $local_v, distante $remote"
             if [ "$remote" != "$local_v" ] && \
                 [ "$(printf '%s\n%s\n' "$remote" "$local_v" | sort -V | tail -n 1)" = "$remote" ]; then
-                if download "$REPO_RAW/install.sh" "$work/install.sh" && \
+                if download "$REPO_API/install.sh?ref=main" "$work/install.sh" && \
                     bash "$work/install.sh" --update; then
                     integration_updated=1
                     log "Mise à jour de l'intégration terminée"

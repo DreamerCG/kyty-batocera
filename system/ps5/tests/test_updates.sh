@@ -53,10 +53,10 @@ while [ "$#" -gt 0 ]; do
 done
 printf '%s\n' "$url" >> "$TEST_DIR/downloads.log"
 case "$url" in
-    */VERSION.txt)
+    */VERSION.txt\?ref=main)
         [ ! -f "$TEST_DIR/offline" ] || exit 1
         cp "$TEST_DIR/remote-version" "$out" ;;
-    */install.sh) cp "$TEST_DIR/remote-installer" "$out" ;;
+    */install.sh\?ref=main) cp "$TEST_DIR/remote-installer" "$out" ;;
     */KytyPS5/KytyPS5/releases/latest)
         [ ! -f "$TEST_DIR/fail-kyty" ] || exit 1
         echo KytyPS5 > "$out" ;;
