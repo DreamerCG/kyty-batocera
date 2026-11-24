@@ -73,18 +73,6 @@ def _config_arguments(config=None, path: Path = KYTY_CONFIG_FILE) -> list[str]:
     """Translate [GlobalConfiguration] into the flags kyty_launcher would pass."""
     parser = configparser.RawConfigParser(interpolation=None, strict=False)
     parser.optionxform = str
-    sdl_keys = (
-        "SDL_JOYSTICK_HIDAPI", "SDL_JOYSTICK_HIDAPI_PS4", "SDL_JOYSTICK_HIDAPI_PS5",
-        "SDL_JOYSTICK_HIDAPI_SWITCH", "SDL_JOYSTICK_HIDAPI_XBOX",
-        "SDL_JOYSTICK_HIDAPI_STEAMDECK", "SDL_GAMECONTROLLERCONFIG_FILE",
-        "SDL_GAMECONTROLLERCONFIG",
-    )
-    previous = {key: os.environ.get(key) for key in sdl_keys}
-    for key in sdl_keys:
-        if key in environment:
-            os.environ[key] = environment[key]
-        else:
-            os.environ.pop(key, None)
     try:
         parser.read(path, encoding="utf-8")
     except (OSError, configparser.Error) as error:
@@ -155,6 +143,18 @@ def _log_sdl_controller_config(environment: dict[str, str]) -> None:
         f"SteamDeck={environment.get('SDL_JOYSTICK_HIDAPI_STEAMDECK', '?')}, "
         f"GameControllerDB={database}"
     )
+    sdl_keys = (
+        "SDL_JOYSTICK_HIDAPI", "SDL_JOYSTICK_HIDAPI_PS4", "SDL_JOYSTICK_HIDAPI_PS5",
+        "SDL_JOYSTICK_HIDAPI_SWITCH", "SDL_JOYSTICK_HIDAPI_XBOX",
+        "SDL_JOYSTICK_HIDAPI_STEAMDECK", "SDL_GAMECONTROLLERCONFIG_FILE",
+        "SDL_GAMECONTROLLERCONFIG",
+    )
+    previous = {key: os.environ.get(key) for key in sdl_keys}
+    for key in sdl_keys:
+        if key in environment:
+            os.environ[key] = environment[key]
+        else:
+            os.environ.pop(key, None)
     try:
         import ctypes
         import ctypes.util
