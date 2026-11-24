@@ -131,6 +131,27 @@ def _log(message: str) -> None:
     print(f"[Kyty Batocera Launch] {message}", file=sys.stderr, flush=True)
 
 
+def _log_sdl_controller_config(environment: dict[str, str]) -> None:
+    for key in (
+        "SDL_JOYSTICK_HIDAPI", "SDL_JOYSTICK_HIDAPI_PS4",
+        "SDL_JOYSTICK_HIDAPI_PS5", "SDL_JOYSTICK_HIDAPI_SWITCH",
+        "SDL_JOYSTICK_HIDAPI_XBOX", "SDL_JOYSTICK_HIDAPI_STEAMDECK",
+        "SDL_GAMECONTROLLERCONFIG_FILE",
+    ):
+        _log(f"Environnement SDL: {key}={environment.get(key)!r}")
+    database = Path(environment.get("SDL_GAMECONTROLLERCONFIG_FILE", ""))
+    try:
+        with database.open(encoding="utf-8") as mapping_file:
+            mappings = [line.strip() for line in mapping_file if line.strip() and not line.lstrip().startswith("#")]
+    except OSError as error:
+        _log(f"Base de mappings SDL illisible ({database}): {error!r}")
+        return
+    _log(f"Base de mappings SDL: {database}, {len(mappings)} entrées")
+    for mapping in mappings:
+        fields = mapping.split(",")
+        _log(f"Mapping SDL déclaré: nom={fields[1] if len(fields) > 1 else '?'} GUID={fields[0] if fields else '?'}")
+
+
 def _ensure_executable(path: Path) -> None:
     try:
         current_mode = path.stat().st_mode
@@ -243,6 +264,7 @@ class Kyty(Emulator):
             }
             environment.update(preset_values)
             _log(f"Preset U59 chargé: {preset}")
+        _log_sdl_controller_config(environment)
         existing_library_path = environment.get("LD_LIBRARY_PATH")
         emulator_lib_dir = self.EMULATOR_DIR / "lib"
         environment["LD_LIBRARY_PATH"] = os.pathsep.join(
