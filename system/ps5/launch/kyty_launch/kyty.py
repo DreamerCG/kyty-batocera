@@ -73,6 +73,18 @@ def _config_arguments(config=None, path: Path = KYTY_CONFIG_FILE) -> list[str]:
     """Translate [GlobalConfiguration] into the flags kyty_launcher would pass."""
     parser = configparser.RawConfigParser(interpolation=None, strict=False)
     parser.optionxform = str
+    sdl_keys = (
+        "SDL_JOYSTICK_HIDAPI", "SDL_JOYSTICK_HIDAPI_PS4", "SDL_JOYSTICK_HIDAPI_PS5",
+        "SDL_JOYSTICK_HIDAPI_SWITCH", "SDL_JOYSTICK_HIDAPI_XBOX",
+        "SDL_JOYSTICK_HIDAPI_STEAMDECK", "SDL_GAMECONTROLLERCONFIG_FILE",
+        "SDL_GAMECONTROLLERCONFIG",
+    )
+    previous = {key: os.environ.get(key) for key in sdl_keys}
+    for key in sdl_keys:
+        if key in environment:
+            os.environ[key] = environment[key]
+        else:
+            os.environ.pop(key, None)
     try:
         parser.read(path, encoding="utf-8")
     except (OSError, configparser.Error) as error:
@@ -132,34 +144,61 @@ def _log(message: str) -> None:
 
 
 def _log_sdl_controller_config(environment: dict[str, str]) -> None:
-    database_value = environment.get("SDL_GAMECONTROLLERCONFIG_FILE", "")
-    database = Path(database_value) if database_value else None
-    override = environment.get("SDL_GAMECONTROLLERCONFIG", "").strip()
-    mappings = []
-    try:
-        if database is not None:
-            with database.open(encoding="utf-8") as mapping_file:
-                mappings = [line.strip() for line in mapping_file if line.strip() and not line.lstrip().startswith("#")]
-    except OSError as error:
-        _log(f"Base GameController illisible ({database}): {error!r}")
+    database = environment.get("SDL_GAMECONTROLLERCONFIG_FILE", "(undefined)")
     _log(
-        "SDL envoyé: "
+        "SDL passed to Kyty: "
         f"HIDAPI={environment.get('SDL_JOYSTICK_HIDAPI', '?')}, "
         f"PS4={environment.get('SDL_JOYSTICK_HIDAPI_PS4', '?')}, "
         f"PS5={environment.get('SDL_JOYSTICK_HIDAPI_PS5', '?')}, "
         f"Switch={environment.get('SDL_JOYSTICK_HIDAPI_SWITCH', '?')}, "
         f"Xbox={environment.get('SDL_JOYSTICK_HIDAPI_XBOX', '?')}, "
         f"SteamDeck={environment.get('SDL_JOYSTICK_HIDAPI_STEAMDECK', '?')}, "
-        f"DB={database or '(non définie)'}"
+        f"GameControllerDB={database}"
     )
-    if override:
-        fields = override.split(",")
-        guid = fields[0].strip()
-        matches = [line for line in mappings if line.split(",", 1)[0].strip().lower() == guid.lower()]
-        _log(f"Mapping SDL actif (variable): GUID={guid}, nom={fields[1] if len(fields) > 1 else '?'}, mapping={override}")
-        _log(f"Correspondance dans la base GameController: {'oui' if matches else 'non'}")
-    else:
-        _log(f"Mapping SDL actif: fichier GameController, {len(mappings)} entrées; GUID du contrôleur non fourni, correspondance par appareil indéterminée")
+    try:
+        import ctypes
+        import ctypes.util
+
+        library_name = ctypes.util.find_library("SDL2-2.0") or ctypes.util.find_library("SDL2")
+        if not library_name:
+            raise OSError("SDL2 library not found")
+        sdl = ctypes.CDLL(library_name)
+        sdl.SDL_Init.argtypes = [ctypes.c_uint32]
+        sdl.SDL_Init.restype = ctypes.c_int
+        sdl.SDL_NumJoysticks.restype = ctypes.c_int
+        sdl.SDL_JoystickNameForIndex.argtypes = [ctypes.c_int]
+        sdl.SDL_JoystickNameForIndex.restype = ctypes.c_char_p
+        sdl.SDL_JoystickGetDeviceGUIDString.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int]
+        sdl.SDL_GameControllerMappingForDeviceIndex.argtypes = [ctypes.c_int]
+        sdl.SDL_GameControllerMappingForDeviceIndex.restype = ctypes.c_void_p
+        sdl.SDL_free.argtypes = [ctypes.c_void_p]
+        if sdl.SDL_Init(0x2000) != 0:  # SDL_INIT_GAMECONTROLLER
+            sdl.SDL_GetError.restype = ctypes.c_char_p
+            raise OSError(sdl.SDL_GetError().decode("utf-8", "replace"))
+        count = sdl.SDL_NumJoysticks()
+        _log(f"SDL detected {count} controller(s); resolved mappings:")
+        for index in range(count):
+            name = sdl.SDL_JoystickNameForIndex(index)
+            guid = ctypes.create_string_buffer(33)
+            sdl.SDL_JoystickGetDeviceGUIDString(index, guid, len(guid))
+            mapping_ptr = sdl.SDL_GameControllerMappingForDeviceIndex(index)
+            mapping = ctypes.string_at(mapping_ptr).decode("utf-8", "replace") if mapping_ptr else None
+            if mapping_ptr:
+                sdl.SDL_free(mapping_ptr)
+            _log(
+                f"  {name.decode('utf-8', 'replace') if name else '?'} "
+                f"GUID={guid.value.decode('ascii', 'replace')} "
+                f"match={'yes' if mapping else 'no'} mapping={mapping or '(none)'}"
+            )
+        sdl.SDL_Quit()
+    except Exception as error:
+        _log(f"Resolved SDL mapping unavailable: {error}")
+    finally:
+        for key, value in previous.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
 
 
 def _ensure_executable(path: Path) -> None:
