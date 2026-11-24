@@ -209,6 +209,17 @@ class KytyGenerator(Generator):
         _log(f"Répertoire de travail: {self.EMULATOR_DIR}")
         _log(f"Commande préparée: {command!r}")
         environment = os.environ.copy()
+        environment.update(
+            {
+                "SDL_JOYSTICK_HIDAPI": "1",
+                "SDL_JOYSTICK_HIDAPI_PS4": "0",
+                "SDL_JOYSTICK_HIDAPI_PS5": "0",
+                "SDL_JOYSTICK_HIDAPI_SWITCH": "0",
+                "SDL_JOYSTICK_HIDAPI_XBOX": "0",
+                "SDL_JOYSTICK_HIDAPI_STEAMDECK": "0",
+                "SDL_GAMECONTROLLERCONFIG_FILE": "/userdata/system/ps5/gamecontrollerdb.txt",
+            }
+        )
         preset = self.EMULATOR_DIR / "u59-preset.json"
         if self.PRESET_REQUIRED and not preset.is_file():
             raise FileNotFoundError(f"Preset U59 absent: {preset}")
