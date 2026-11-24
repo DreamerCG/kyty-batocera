@@ -132,24 +132,34 @@ def _log(message: str) -> None:
 
 
 def _log_sdl_controller_config(environment: dict[str, str]) -> None:
-    for key in (
-        "SDL_JOYSTICK_HIDAPI", "SDL_JOYSTICK_HIDAPI_PS4",
-        "SDL_JOYSTICK_HIDAPI_PS5", "SDL_JOYSTICK_HIDAPI_SWITCH",
-        "SDL_JOYSTICK_HIDAPI_XBOX", "SDL_JOYSTICK_HIDAPI_STEAMDECK",
-        "SDL_GAMECONTROLLERCONFIG_FILE",
-    ):
-        _log(f"Environnement SDL: {key}={environment.get(key)!r}")
-    database = Path(environment.get("SDL_GAMECONTROLLERCONFIG_FILE", ""))
+    database_value = environment.get("SDL_GAMECONTROLLERCONFIG_FILE", "")
+    database = Path(database_value) if database_value else None
+    override = environment.get("SDL_GAMECONTROLLERCONFIG", "").strip()
+    mappings = []
     try:
-        with database.open(encoding="utf-8") as mapping_file:
-            mappings = [line.strip() for line in mapping_file if line.strip() and not line.lstrip().startswith("#")]
+        if database is not None:
+            with database.open(encoding="utf-8") as mapping_file:
+                mappings = [line.strip() for line in mapping_file if line.strip() and not line.lstrip().startswith("#")]
     except OSError as error:
-        _log(f"Base de mappings SDL illisible ({database}): {error!r}")
-        return
-    _log(f"Base de mappings SDL: {database}, {len(mappings)} entrées")
-    for mapping in mappings:
-        fields = mapping.split(",")
-        _log(f"Mapping SDL déclaré: nom={fields[1] if len(fields) > 1 else '?'} GUID={fields[0] if fields else '?'}")
+        _log(f"Base GameController illisible ({database}): {error!r}")
+    _log(
+        "SDL envoyé: "
+        f"HIDAPI={environment.get('SDL_JOYSTICK_HIDAPI', '?')}, "
+        f"PS4={environment.get('SDL_JOYSTICK_HIDAPI_PS4', '?')}, "
+        f"PS5={environment.get('SDL_JOYSTICK_HIDAPI_PS5', '?')}, "
+        f"Switch={environment.get('SDL_JOYSTICK_HIDAPI_SWITCH', '?')}, "
+        f"Xbox={environment.get('SDL_JOYSTICK_HIDAPI_XBOX', '?')}, "
+        f"SteamDeck={environment.get('SDL_JOYSTICK_HIDAPI_STEAMDECK', '?')}, "
+        f"DB={database or '(non définie)'}"
+    )
+    if override:
+        fields = override.split(",")
+        guid = fields[0].strip()
+        matches = [line for line in mappings if line.split(",", 1)[0].strip().lower() == guid.lower()]
+        _log(f"Mapping SDL actif (variable): GUID={guid}, nom={fields[1] if len(fields) > 1 else '?'}, mapping={override}")
+        _log(f"Correspondance dans la base GameController: {'oui' if matches else 'non'}")
+    else:
+        _log(f"Mapping SDL actif: fichier GameController, {len(mappings)} entrées; GUID du contrôleur non fourni, correspondance par appareil indéterminée")
 
 
 def _ensure_executable(path: Path) -> None:
